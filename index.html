@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Liveness Lock</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  body { font-family: sans-serif; text-align: center; background: #111; color: #eee; margin: 0; padding: 16px; }
+  video { width: 100%; max-width: 420px; transform: scaleX(-1); border-radius: 12px; }
+  #status { font-size: 20px; margin: 12px; }
+</style>
+</head>
+<body>
+<h2 id="status">Loading...</h2>
+<video id="v" autoplay playsinline muted></video>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const statusEl = document.getElementById("status");
+const video = document.getElementById("v");
+
+const LEFT_EYE  = [362, 385, 387, 263, 373, 380];
+const RIGHT_EYE = [33, 160, 158, 133, 153, 144];
+const EAR_THRESHOLD = 0.21;
+const TARGET_BLINKS = 2;
+
+let landmarker, eyesClosed = false, blinks = 0, unlocked = false;
+
+function ear(lm, idx) {
+  const d = (a, b) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y);
+  return (d(idx[1], idx[5]) + d(idx[2], idx[4])) / (2 * d(idx[0], idx[3]));
+}
+
+async function init() {
+  const fileset = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  landmarker = await FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+    },
+    runningMode: "VIDEO",
+    numFaces: 1
+  });
+
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+  video.srcObject = stream;
+  await video.play();
+
+  statusEl.textContent = `Apni aankh ${TARGET_BLINKS} baar jhapkayein`;
