@@ -8,11 +8,11 @@
 <style>
   body { font-family: sans-serif; text-align: center; background: #111; color: #eee; margin: 0; padding: 16px; }
   video { width: 100%; max-width: 420px; transform: scaleX(-1); border-radius: 12px; }
-  #status { font-size: 20px; margin: 12px; }
+  #status { font-size: 18px; margin: 12px; }
 </style>
 </head>
 <body>
-<h2 id="status">Loading...</h2>
+<h2 id="status">Page load ho raha hai...</h2>
 <video id="v" autoplay playsinline muted></video>
 
 <script type="module">
@@ -20,6 +20,7 @@ import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 
 const statusEl = document.getElementById("status");
 const video = document.getElementById("v");
+const set = t => statusEl.textContent = t;
 
 const LEFT_EYE  = [362, 385, 387, 263, 373, 380];
 const RIGHT_EYE = [33, 160, 158, 133, 153, 144];
@@ -34,19 +35,66 @@ function ear(lm, idx) {
 }
 
 async function init() {
-  const fileset = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-  );
-  landmarker = await FaceLandmarker.createFromOptions(fileset, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
-    },
-    runningMode: "VIDEO",
-    numFaces: 1
-  });
+  try {
+    set("Step 1/3: AI library load ho rahi hai...");
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
 
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-  video.srcObject = stream;
-  await video.play();
+    set("Step 2/3: Face model download ho raha hai (1 minute tak lag sakta hai)...");
+    landmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1
+    });
 
-  statusEl.textContent = `Apni aankh ${TARGET_BLINKS} baar jhapkayein`;
+    set("Step 3/3: Camera start ho raha hai, Allow karein...");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    video.srcObject = stream;
+    await video.play();
+
+    set(`Apni aankh ${TARGET_BLINKS} baar jhapkayein`);
+    loop();
+  } catch (e) {
+    set("Error: " + e.message);
+  }
+}
+
+function loop() {
+  if (unlocked) return;
+  if (video.readyState < 2) {
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  const res = landmarker.detectForVideo(video, performance.now());
+
+  if (res.faceLandmarks && res.faceLandmarks.length) {
+    const lm = res.faceLandmarks[0];
+    const avg = (ear(lm, LEFT_EYE) + ear(lm, RIGHT_EYE)) / 2;
+
+    if (avg < EAR_THRESHOLD) {
+      eyesClosed = true;
+    } else if (eyesClosed) {
+      eyesClosed = false;
+      blinks++;
+      set(`Blink ${blinks}/${TARGET_BLINKS}`);
+      if (blinks >= TARGET_BLINKS) {
+        unlocked = true;
+        set("Unlocked ✅");
+        return;
+      }
+    }
+  } else {
+    set("Chehra camera mein dikhayein");
+  }
+
+  requestAnimationFrame(loop);
+}
+
+init();
+</script>
+</body>
+</html>
